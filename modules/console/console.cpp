@@ -1,12 +1,23 @@
 #include "console.h"
 
 #include <filesystem>
+#include <fstream>
+
+String Console::output;
 
 Console::Console() {
 }
 
 Console::~Console() {
+}
 
+int Console::exec(const String &file) noexcept {
+	/*std::ifstream source(file.get_data());
+	if (!source.is_open()) {
+		Console::print_line("Couldn't open stream:", strerror(errno));
+		return errno;
+	}*/
+	return 0;
 }
 
 void Console::submit(const String &text) {
@@ -20,7 +31,7 @@ void Console::submit(const String &text) {
 	if ((cmd = ConsoleCommand::find(args[0]))) {
 		cmd->invoke(args);
 	} else {
-		print_line("Unknown command");
+		Console::print_line("Unknown command:", args[0]);
 	}
 }
 
@@ -33,14 +44,18 @@ ConsoleCommand *ConsoleCommand::first;
 ConsoleCommand::ConsoleCommand() {
 }
 
-ConsoleCommand::ConsoleCommand(const char *p_name, function_t p_function) :
-		name(p_name), function(p_function), next(first) {
+ConsoleCommand::ConsoleCommand(const char *p_name, function_t p_function, flags_t p_flags, const char *p_description) :
+		name(p_name), function(p_function), flags(p_flags), description(p_description), next(first) {
 	first = this;
 
 	printf("ConsoleCommand %s\n", p_name);
 }
 
 ConsoleCommand::~ConsoleCommand() {
+}
+
+void ConsoleCommand::_bind_methods() {
+	ClassDB::bind_static_method("ConsoleCommand", "find", &ConsoleCommand::find);
 }
 
 int ConsoleCommand::invoke(const PackedStringArray &args) {
@@ -60,51 +75,141 @@ ConsoleCommand *ConsoleCommand::find(const String &name) {
 
 /* commands */
 
+static int cplusplus_fn(const PackedStringArray &args) {
+  print_line((int)__cplusplus);
+  return (int)__cplusplus;
+}
+ConsoleCommand cplusplus_cmd("__cplusplus", cplusplus_fn, 0, "C++ version");
+
 static int help_fn(const PackedStringArray &args) {
 	int num = 0;
 	for (ConsoleCommand *it = ConsoleCommand::first; it; it = it->next) {
-		print_line(it->name);
+		Console::print_line(it->name, it->description);
 		++num;
 	}
-	print_line(num, " commands");
+	Console::print_line(num, "commands");
 	return num;
 }
 ConsoleCommand help_cmd("help", help_fn);
+
+static int exec_fn(const PackedStringArray &args) {
+	if (args.size() == 2) {
+		return Console::exec(args[1]);
+	} else {
+		Console::print_line("Usage:", args[0], "<file>");
+		return -1;
+	}
+}
+ConsoleCommand exec_cmd("exec", exec_fn, CMD_FL_C, "C");
 
 static int exit_fn(const PackedStringArray &args) {
 	// TODO proper
 	exit(EXIT_SUCCESS);
 	return EXIT_SUCCESS;
 }
-ConsoleCommand exit_cmd("exit", exit_fn);
+ConsoleCommand exit_cmd("exit", exit_fn, CMD_FL_C, "C");
 
 static int parse_fn(const PackedStringArray &args) {
 	for (int64_t i = 0; i < args.size(); ++i) {
-    print_line(i, ": '", args[i], '\'');
-  }
+		// TODO how to not print space?
+		Console::print_line(i, ": ", args[i]);
+	}
 	return 0;
 }
 ConsoleCommand parse_cmd("parse", parse_fn);
 
 static int errno_fn(const PackedStringArray &args) {
-	print_line(errno);
+	Console::print_line(errno);
 	return 0;
 }
-ConsoleCommand errno_cmd("errno", errno_fn);
+ConsoleCommand errno_cmd("errno", errno_fn, CMD_FL_C, "C");
 
 static int strerror_fn(const PackedStringArray &args) {
-	print_line(strerror(errno));
+	Console::print_line(strerror(errno));
 	return 0;
 }
-ConsoleCommand strerror_cmd("strerror", strerror_fn);
+ConsoleCommand strerror_cmd("strerror", strerror_fn, CMD_FL_C, "C");
+
+// UNIX
+// https://en.wikipedia.org/wiki/List_of_POSIX_commands
+
+static int alias_fn(const PackedStringArray &args) {
+	return 0;
+}
+ConsoleCommand alias_cmd("alias", alias_fn, CMD_FL_UNIX, "POSIX");
+
+static int cat_fn(const PackedStringArray &args) {
+	return 0;
+}
+ConsoleCommand cat_cmd("cat", cat_fn, CMD_FL_UNIX, "POSIX");
+
+static int echo_fn(const PackedStringArray &args) {
+	return 0;
+}
+ConsoleCommand echo_cmd("echo", echo_fn, CMD_FL_UNIX, "POSIX");
 
 static int ls_fn(const PackedStringArray &args) {
-  std::filesystem::directory_iterator dir(std::filesystem::current_path());
+	std::filesystem::directory_iterator dir(std::filesystem::current_path());
 
-  for (const auto& file : dir) {
-    print_line(file.path().generic_string().c_str());
-  }
+	for (const auto &file : dir) {
+		Console::print_line(file.path().generic_string().c_str());
+	}
 
 	return 0;
 }
-ConsoleCommand ls_cmd("ls", ls_fn);
+ConsoleCommand ls_cmd("ls", ls_fn, CMD_FL_UNIX, "POSIX");
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+static int who_fn(const PackedStringArray &args) {
+#ifdef _WIN32
+	CHAR username[256];
+	DWORD username_len = sizeof(username);
+	GetUserNameA(username, &username_len);
+	Console::print_line(username);
+	return 0;
+#else
+	Console::print_line("TODO");
+	return -1;
+#endif
+}
+ConsoleCommand who_cmd("who", who_fn, CMD_FL_UNIX, "POSIX");
+
+#include "core/config/engine.h"
+
+static int architecture_fn(const PackedStringArray &args) {
+  Engine *const engine = Engine::get_singleton();
+
+	Console::print_line(engine->get_architecture_name());
+
+	return 0;
+}
+ConsoleCommand architecture_cmd("architecture", architecture_fn);
+
+static int max_fps_fn(const PackedStringArray &args) {
+	Engine *const engine = Engine::get_singleton();
+
+	if (args.size() >= 2) {
+		engine->set_max_fps((int)args[0].to_int());
+	} else {
+		Console::print_line(args[0], "is", engine->get_max_fps());
+	}
+
+	return 0;
+}
+ConsoleCommand max_fps_cmd("max_fps", max_fps_fn, 0, "framerate");
+
+static int audio_output_latency_fn(const PackedStringArray &args) {
+  Engine *const engine = Engine::get_singleton();
+
+	if (args.size() >= 2) {
+		engine->set_audio_output_latency((int)args[0].to_int());
+	} else {
+		Console::print_line(args[0], "is", engine->get_audio_output_latency());
+	}
+
+	return 0;
+}
+ConsoleCommand audio_output_latency_cmd("audio_output_latency", audio_output_latency_fn, 0, "msec");
