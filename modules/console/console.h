@@ -32,6 +32,8 @@ public:
 
 	static void submit(const String &text);
 
+	static String *find_alias(const String &name);
+
 protected:
 	static void _bind_methods();
 };
