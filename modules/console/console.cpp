@@ -1,4 +1,6 @@
 #include "console.h"
+#include "scene/main/node.h"
+#include "scene/main/scene_tree.h"
 
 #include <filesystem>
 #include <fstream>
@@ -36,8 +38,8 @@ void Console::submit(const String &text) {
 	}
 }
 
-String* Console::find_alias(const String&name) {
-	for (auto& alias : aliases) {
+String *Console::find_alias(const String &name) {
+	for (auto &alias : aliases) {
 		if (alias == name) {
 			return &alias;
 		}
@@ -85,6 +87,39 @@ ConsoleCommand *ConsoleCommand::find(const String &name) {
 
 /* commands */
 
+static int map_fn(const PackedStringArray &args) {
+	SceneTree *const tree = SceneTree::get_singleton();
+	DEV_ASSERT(tree != nullptr);
+
+	if (args.size() == 2) {
+		String path = "res://maps/";
+		path += args[1];
+		path += ".tscn";
+		// https://docs.godotengine.org/en/stable/classes/class_scenetree.html#class-scenetree-method-change-scene-to-file
+		const Error error = tree->change_scene_to_file(path);
+		switch (error) {
+			case OK:
+				print_line("OK");
+				break;
+			case ERR_CANT_OPEN:
+				print_error("ERR_CANT_OPEN");
+				break;
+			case ERR_CANT_CREATE:
+				print_error("ERR_CANT_CREATE");
+				break;
+			default:
+				print_error("Error", error);
+				break;
+		}
+		return error;
+	} else {
+		print_line(args[0], "is", tree->current_scene->get_name());
+	}
+
+	return 0;
+}
+ConsoleCommand map_cmd("map", map_fn, 0, "current map");
+
 static int cplusplus_fn(const PackedStringArray &args) {
 	print_line("__cplusplus is", (int)__cplusplus);
 
@@ -119,9 +154,10 @@ static int bind_fn(const PackedStringArray &args) {
 ConsoleCommand bind_cmd("bind", bind_fn);
 
 static int exit_fn(const PackedStringArray &args) {
-	// TODO proper
-	exit(EXIT_SUCCESS);
-	return EXIT_SUCCESS;
+	SceneTree *const tree = SceneTree::get_singleton();
+	assert(tree != nullptr);
+	tree->quit();
+	return 0;
 }
 ConsoleCommand exit_cmd("exit", exit_fn, CMD_FL_C, "C");
 
@@ -151,7 +187,7 @@ ConsoleCommand strerror_cmd("strerror", strerror_fn, CMD_FL_C, "C");
 
 static int alias_fn(const PackedStringArray &args) {
 	if (args.size() == 2) {
-		auto* const alias = Console::find_alias(args[1]);
+		auto *const alias = Console::find_alias(args[1]);
 		if (alias) {
 			Console::print_line(args[1], "is", *alias);
 			return 0;
