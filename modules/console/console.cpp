@@ -87,14 +87,41 @@ ConsoleCommand *ConsoleCommand::find(const String &name) {
 
 /* commands */
 
+static int print_tree_fn(const PackedStringArray &args) {
+	SceneTree *const tree = SceneTree::get_singleton();
+	DEV_ASSERT(tree != nullptr);
+
+	Node *const scene = tree->get_current_scene();
+	DEV_ASSERT(scene != nullptr);
+
+	Console::print_line(scene->get_tree_string());
+
+	return 0;
+}
+ConsoleCommand print_tree_cmd("print_tree", print_tree_fn, CMD_FL_CHEAT, "list nodes");
+
+static int print_tree_pretty_fn(const PackedStringArray &args) {
+	SceneTree *const tree = SceneTree::get_singleton();
+	DEV_ASSERT(tree != nullptr);
+
+	Node *const scene = tree->get_current_scene();
+	DEV_ASSERT(scene != nullptr);
+
+	Console::print_line(scene->get_tree_string_pretty());
+
+	return 0;
+}
+ConsoleCommand print_tree_pretty_cmd("print_tree_pretty", print_tree_pretty_fn, CMD_FL_CHEAT, "list nodes");
+
 static int map_fn(const PackedStringArray &args) {
 	SceneTree *const tree = SceneTree::get_singleton();
 	DEV_ASSERT(tree != nullptr);
 
 	if (args.size() == 2) {
-		String path = "res://maps/";
+		String path = "base/maps/";
 		path += args[1];
 		path += ".tscn";
+		print_line("change_scene_to_file", path.quote());
 		// https://docs.godotengine.org/en/stable/classes/class_scenetree.html#class-scenetree-method-change-scene-to-file
 		const Error error = tree->change_scene_to_file(path);
 		switch (error) {
@@ -108,17 +135,33 @@ static int map_fn(const PackedStringArray &args) {
 				print_error("ERR_CANT_CREATE");
 				break;
 			default:
-				print_error("Error", error);
+				print_error("Error");
 				break;
 		}
 		return error;
 	} else {
-		print_line(args[0], "is", tree->current_scene->get_name());
+		print_line(args[0], "is", tree->get_current_scene()->get_name());
 	}
 
 	return 0;
 }
 ConsoleCommand map_cmd("map", map_fn, 0, "current map");
+
+static int maps_fn(const PackedStringArray &args) {
+	std::filesystem::directory_iterator dir("base/maps");
+
+	int num = 0;
+	for (const auto &file : dir) {
+		if (!file.is_directory() && file.path().extension() == ".tscn") {
+			Console::print_line(file.path().filename().generic_string().c_str());
+			++num;
+		}
+	}
+	Console::print_line(num, "maps");
+
+	return 0;
+}
+ConsoleCommand maps_cmd("maps", maps_fn, 0, "list maps");
 
 static int cplusplus_fn(const PackedStringArray &args) {
 	print_line("__cplusplus is", (int)__cplusplus);
@@ -208,7 +251,7 @@ static int alias_fn(const PackedStringArray &args) {
 		return 0;
 	}
 }
-ConsoleCommand alias_cmd("alias", alias_fn, CMD_FL_UNIX, "POSIX");
+ConsoleCommand alias_cmd("alias", alias_fn, CMD_FL_UNIX, "manage aliases");
 
 static int cat_fn(const PackedStringArray &args) {
 	if (args.size() == 2) {
@@ -218,7 +261,7 @@ static int cat_fn(const PackedStringArray &args) {
 
 	return 0;
 }
-ConsoleCommand cat_cmd("cat", cat_fn, CMD_FL_UNIX, "POSIX");
+ConsoleCommand cat_cmd("cat", cat_fn, CMD_FL_UNIX, "concatenate");
 
 static int echo_fn(const PackedStringArray &args) {
 	// whatever
@@ -231,18 +274,24 @@ static int echo_fn(const PackedStringArray &args) {
 
 	return 0;
 }
-ConsoleCommand echo_cmd("echo", echo_fn, CMD_FL_UNIX, "POSIX");
+ConsoleCommand echo_cmd("echo", echo_fn, CMD_FL_UNIX, "print arguments");
 
 static int ls_fn(const PackedStringArray &args) {
 	std::filesystem::directory_iterator dir(std::filesystem::current_path());
 
 	for (const auto &file : dir) {
-		Console::print_line(file.path().generic_string().c_str());
+		Console::print_line(file.path().filename().generic_string().c_str());
 	}
 
 	return 0;
 }
-ConsoleCommand ls_cmd("ls", ls_fn, CMD_FL_UNIX, "POSIX");
+ConsoleCommand ls_cmd("ls", ls_fn, CMD_FL_UNIX, "list files");
+
+static int pwd_fn(const PackedStringArray &args) {
+	Console::print_line(std::filesystem::current_path().generic_string().c_str());
+	return 0;
+}
+ConsoleCommand pwd_cmd("pwd", pwd_fn, CMD_FL_UNIX, "print working directory");
 
 #ifdef _WIN32
 #include <windows.h>
@@ -362,3 +411,18 @@ static int time_scale_fn(const PackedStringArray &args) {
 	return 0;
 }
 ConsoleCommand time_scale_cmd("time_scale", time_scale_fn, CMD_FL_CHEAT, "time speed");
+
+static int find_fn(const PackedStringArray &args) {
+	if (args.size() < 2) {
+		Console::print_line("Usage:", args[0], "<substring>");
+		return -1;
+	} else {
+		for (ConsoleCommand *it = ConsoleCommand::first; it; it = it->next) {
+			if (it->name.contains(args[1])) {
+				Console::print_line(it->name, it->description);
+			}
+		}
+		return 0;
+	}
+}
+ConsoleCommand find_cmd("find", find_fn, 0, "search for commands by substring");
